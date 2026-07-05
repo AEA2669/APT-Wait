@@ -30,36 +30,12 @@
 <div class="updated" id="updated"></div>
 
 <script>
-async function fetchWithFallback(url) {
-  try {
-    // Try direct API first (works locally, some browsers)
-    let res = await fetch(url);
-    if (res.ok) return res.json();
-  } catch (e) {}
-
-  try {
-    // Try corsproxy.io
-    let res = await fetch("https://corsproxy.io/?" + url);
-    if (res.ok) return res.json();
-  } catch (e) {}
-
-  try {
-    // Try allorigins
-    let res = await fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(url));
-    if (res.ok) {
-      let data = await res.json();
-      return JSON.parse(data.contents);
-    }
-  } catch (e) {}
-
-  throw new Error("All proxies failed");
-}
-
 async function loadDFW() {
-  const API_URL = "https://airport-now.vercel.app/api/airports";
+  const API_URL = "https://<your-vercel-project>.vercel.app/api/airports";
 
   try {
-    const data = await fetchWithFallback(API_URL);
+    const res = await fetch(API_URL);
+    const data = await res.json();
 
     const dfw = data.airports.find(a => a.code === "DFW");
 
@@ -139,7 +115,7 @@ async function loadDFW() {
 
   } catch (err) {
     document.getElementById("terminal-groups").innerHTML =
-      "<p>Error loading live data. All proxies failed.</p>";
+      "<p>Error loading live data.</p>";
   }
 }
 
