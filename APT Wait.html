@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DFW Live TSA Wait Times (Grouped)</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:20px; }
+  h1 { text-align:center; margin-bottom:20px; }
+  h2 { margin-top:30px; }
+  .group { margin-bottom:30px; }
+  .checkpoint {
+    background:white; padding:12px; margin:10px 0; border-radius:8px;
+    box-shadow:0 2px 4px rgba(0,0,0,0.1);
+  }
+  .closed { background:#ffe5e5; }
+  .name { font-size:18px; font-weight:bold; }
+  .terminal { color:#555; }
+  .status { margin-top:4px; }
+  .wait { font-size:20px; font-weight:bold; margin-top:6px; }
+  .updated { text-align:center; margin-top:20px; color:#666; }
+</style>
+</head>
+<body>
+
+<h1>DFW Live TSA Wait Times</h1>
+
+<div id="terminal-groups"></div>
+<div class="updated" id="updated"></div>
+
+<script>
+async function loadDFW() {
+  try {
+    const res = await fetch("https://airport-now.vercel.app/api/airports");
+    const data = await res.json();
+
+    const dfw = data.airports.find(a => a.code === "DFW");
+
+    // Grouping structure
+    const groups = {
+      "Terminal A": {},
+      "Terminal B": {},
+      "Terminal C": {},
+      "Terminal D": {},
+      "Terminal E": {}
+    };
+
+    // Normalize lane types
+    function laneType(msg) {
+      if (msg.includes("Standard")) return "Standard screening";
+      if (msg.includes("TSA PreCheck")) return "TSA PreCheck lane";
+      if (msg.includes("Priority")) return "Priority lane";
+      return msg;
+    }
+
+    // Build groups
+    dfw.checkpoints.forEach(cp => {
+      const terminal = cp.terminal || "Unknown Terminal";
+      const type = laneType(cp.message);
+      const status = cp.status;
+
+      if (!groups[terminal]) groups[terminal] = {};
+      if (!groups[terminal][type]) groups[terminal][type] = { Open: [], Closed: [] };
+
+      groups[terminal][type][status].push(cp);
+    });
+
+    // Render
+    const container = document.getElementById("terminal-groups");
+    container.innerHTML = "";
+
+    Object.keys(groups).forEach(terminal => {
+      const termDiv = document.createElement("div");
+      termDiv.className = "group";
+
+      termDiv.innerHTML = `<h2>${terminal}</h2>`;
+
+      const laneTypes = groups[terminal];
+
+      Object.keys(laneTypes).forEach(type => {
+        const typeDiv = document.createElement("div");
+        typeDiv.innerHTML = `<h3>${type}</h3>`;
+
+        ["Open", "Closed"].forEach(status => {
+          const cps = laneTypes[type][status];
+          if (cps.length > 0) {
+            const statusHeader = document.createElement("h4");
+            statusHeader.innerText = status;
+            typeDiv.appendChild(statusHeader);
+
+            cps.forEach(cp => {
+              const div = document.createElement("div");
+              div.className = "checkpoint " + (cp.status === "Closed" ? "closed" : "");
+
+              div.innerHTML = `
+                <div class="name">${cp.name}</div>
+                <div class="terminal">${cp.terminal}</div>
+                <div class="status"><strong>Status:</strong> ${cp.status}</div>
+                <div class="wait">${cp.displayWait || "N/A"}</div>
+                <div class="type">${cp.message}</div>
+              `;
+
+              typeDiv.appendChild(div);
+            });
+          }
+        });
+
+        termDiv.appendChild(typeDiv);
+      });
+
+      container.appendChild(termDiv);
+    });
+
+    document.getElementById("updated").innerText =
+      "Last updated: " + new Date(dfw.updatedAt).toLocaleString();
+
+  } catch (err) {
+    document.getElementById("terminal-groups").innerHTML =
+      "<p>Error loading live data.</p>";
+  }
+}
+
+// Load immediately
+loadDFW();
+
+// Refresh every 60 seconds
+setInterval(loadDFW, 60000);
+</script>
+
+</body>
+</html>
