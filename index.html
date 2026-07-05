@@ -7,6 +7,8 @@
   body { font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:20px; }
   h1 { text-align:center; margin-bottom:20px; }
   h2 { margin-top:30px; }
+  h3 { margin-top:20px; }
+  h4 { margin-top:10px; }
   .group { margin-bottom:30px; }
   .checkpoint {
     background:white; padding:12px; margin:10px 0; border-radius:8px;
@@ -28,14 +30,39 @@
 <div class="updated" id="updated"></div>
 
 <script>
-async function loadDFW() {
+async function fetchWithFallback(url) {
   try {
-    const res = await fetch("https://airport-now.vercel.app/api/airports");
-    const data = await res.json();
+    // Try direct API first (works locally, some browsers)
+    let res = await fetch(url);
+    if (res.ok) return res.json();
+  } catch (e) {}
+
+  try {
+    // Try corsproxy.io
+    let res = await fetch("https://corsproxy.io/?" + url);
+    if (res.ok) return res.json();
+  } catch (e) {}
+
+  try {
+    // Try allorigins
+    let res = await fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(url));
+    if (res.ok) {
+      let data = await res.json();
+      return JSON.parse(data.contents);
+    }
+  } catch (e) {}
+
+  throw new Error("All proxies failed");
+}
+
+async function loadDFW() {
+  const API_URL = "https://airport-now.vercel.app/api/airports";
+
+  try {
+    const data = await fetchWithFallback(API_URL);
 
     const dfw = data.airports.find(a => a.code === "DFW");
 
-    // Grouping structure
     const groups = {
       "Terminal A": {},
       "Terminal B": {},
@@ -44,7 +71,6 @@ async function loadDFW() {
       "Terminal E": {}
     };
 
-    // Normalize lane types
     function laneType(msg) {
       if (msg.includes("Standard")) return "Standard screening";
       if (msg.includes("TSA PreCheck")) return "TSA PreCheck lane";
@@ -52,7 +78,6 @@ async function loadDFW() {
       return msg;
     }
 
-    // Build groups
     dfw.checkpoints.forEach(cp => {
       const terminal = cp.terminal || "Unknown Terminal";
       const type = laneType(cp.message);
@@ -64,7 +89,6 @@ async function loadDFW() {
       groups[terminal][type][status].push(cp);
     });
 
-    // Render
     const container = document.getElementById("terminal-groups");
     container.innerHTML = "";
 
@@ -115,14 +139,11 @@ async function loadDFW() {
 
   } catch (err) {
     document.getElementById("terminal-groups").innerHTML =
-      "<p>Error loading live data.</p>";
+      "<p>Error loading live data. All proxies failed.</p>";
   }
 }
 
-// Load immediately
 loadDFW();
-
-// Refresh every 60 seconds
 setInterval(loadDFW, 60000);
 </script>
 
