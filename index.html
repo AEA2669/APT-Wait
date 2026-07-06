@@ -2,125 +2,80 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>DFW Live TSA Wait Times (Grouped)</title>
+<title>DFW TSA Wait Times</title>
 <style>
-  body { font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:20px; }
-  h1 { text-align:center; margin-bottom:20px; }
-  h2 { margin-top:30px; }
-  h3 { margin-top:20px; }
-  h4 { margin-top:10px; }
-  .group { margin-bottom:30px; }
-  .checkpoint {
-    background:white; padding:12px; margin:10px 0; border-radius:8px;
-    box-shadow:0 2px 4px rgba(0,0,0,0.1);
-  }
-  .closed { background:#ffe5e5; }
-  .name { font-size:18px; font-weight:bold; }
-  .terminal { color:#555; }
-  .status { margin-top:4px; }
-  .wait { font-size:20px; font-weight:bold; margin-top:6px; }
-  .updated { text-align:center; margin-top:20px; color:#666; }
+    body { font-family: Arial; background:#f4f6f9; padding:20px; }
+    h1 { color:#00338D; }
+    .updated { margin-bottom:20px; color:#555; }
+    .terminal { background:white; padding:15px; margin-bottom:20px;
+                border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+    .terminal h2 { color:#D9222A; }
+    table { width:100%; border-collapse:collapse; }
+    th { background:#00338D; color:white; padding:8px; }
+    td { padding:8px; border-bottom:1px solid #ddd; }
+    .open { color:green; font-weight:bold; }
+    .closed { color:#D9222A; font-weight:bold; }
 </style>
 </head>
 <body>
 
-<h1>DFW Live TSA Wait Times</h1>
-
-<div id="terminal-groups"></div>
-<div class="updated" id="updated"></div>
+<h1>DFW TSA Wait Times</h1>
+<div class="updated" id="updated">Loading...</div>
+<div id="content"></div>
 
 <script>
-async function loadDFW() {
-  const API_URL = "https://<your-vercel-project>.vercel.app/api/airports";
+async function loadWaitTimes() {
+    try {
+        const dfwUrl = "https://www.dfwairport.com/api/waittimes";
 
-  try {
-    const res = await fetch(API_URL);
-    const data = await res.json();
+        // Cubic CORS relay
+        const relay = "https://cubic-cors.vercel.app/api?url=" + encodeURIComponent(dfwUrl);
 
-    const dfw = data.airports.find(a => a.code === "DFW");
+        const res = await fetch(relay);
+        const data = await res.json();
 
-    const groups = {
-      "Terminal A": {},
-      "Terminal B": {},
-      "Terminal C": {},
-      "Terminal D": {},
-      "Terminal E": {}
-    };
-
-    function laneType(msg) {
-      if (msg.includes("Standard")) return "Standard screening";
-      if (msg.includes("TSA PreCheck")) return "TSA PreCheck lane";
-      if (msg.includes("Priority")) return "Priority lane";
-      return msg;
-    }
-
-    dfw.checkpoints.forEach(cp => {
-      const terminal = cp.terminal || "Unknown Terminal";
-      const type = laneType(cp.message);
-      const status = cp.status;
-
-      if (!groups[terminal]) groups[terminal] = {};
-      if (!groups[terminal][type]) groups[terminal][type] = { Open: [], Closed: [] };
-
-      groups[terminal][type][status].push(cp);
-    });
-
-    const container = document.getElementById("terminal-groups");
-    container.innerHTML = "";
-
-    Object.keys(groups).forEach(terminal => {
-      const termDiv = document.createElement("div");
-      termDiv.className = "group";
-
-      termDiv.innerHTML = `<h2>${terminal}</h2>`;
-
-      const laneTypes = groups[terminal];
-
-      Object.keys(laneTypes).forEach(type => {
-        const typeDiv = document.createElement("div");
-        typeDiv.innerHTML = `<h3>${type}</h3>`;
-
-        ["Open", "Closed"].forEach(status => {
-          const cps = laneTypes[type][status];
-          if (cps.length > 0) {
-            const statusHeader = document.createElement("h4");
-            statusHeader.innerText = status;
-            typeDiv.appendChild(statusHeader);
-
-            cps.forEach(cp => {
-              const div = document.createElement("div");
-              div.className = "checkpoint " + (cp.status === "Closed" ? "closed" : "");
-
-              div.innerHTML = `
-                <div class="name">${cp.name}</div>
-                <div class="terminal">${cp.terminal}</div>
-                <div class="status"><strong>Status:</strong> ${cp.status}</div>
-                <div class="wait">${cp.displayWait || "N/A"}</div>
-                <div class="type">${cp.message}</div>
-              `;
-
-              typeDiv.appendChild(div);
-            });
-          }
+        const grouped = {};
+        data.forEach(item => {
+            if (!grouped[item.terminal]) grouped[item.terminal] = [];
+            grouped[item.terminal].push(item);
         });
 
-        termDiv.appendChild(typeDiv);
-      });
+        let html = "";
+        Object.keys(grouped).forEach(terminal => {
+            html += `<div class="terminal">
+                        <h2>Terminal ${terminal}</h2>
+                        <table>
+                            <tr>
+                                <th>Checkpoint</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Wait</th>
+                            </tr>`;
 
-      container.appendChild(termDiv);
-    });
+            grouped[terminal].forEach(cp => {
+                html += `<tr>
+                            <td>${cp.checkpoint}</td>
+                            <td>${cp.type}</td>
+                            <td class="${cp.status === 'Open' ? 'open' : 'closed'}">${cp.status}</td>
+                            <td>${cp.waitTime} min</td>
+                         </tr>`;
+            });
 
-    document.getElementById("updated").innerText =
-      "Last updated: " + new Date(dfw.updatedAt).toLocaleString();
+            html += `</table></div>`;
+        });
 
-  } catch (err) {
-    document.getElementById("terminal-groups").innerHTML =
-      "<p>Error loading live data.</p>";
-  }
+        document.getElementById("content").innerHTML = html;
+        document.getElementById("updated").innerText =
+            "Last Updated: " + new Date().toLocaleString();
+
+    } catch (e) {
+        document.getElementById("updated").innerText = "Error loading data.";
+        console.error(e);
+    }
 }
 
-loadDFW();
-setInterval(loadDFW, 60000);
+loadWaitTimes();
+setInterval(loadWaitTimes, 30000);
 </script>
 
 </body>
